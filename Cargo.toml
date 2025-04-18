@@ -1,0 +1,22 @@
+[package]
+name = "bevy_picking_state_machine"
+version = "0.1.0"
+edition = "2024"
+
+authors = ["Mincong Lu <mintlux667@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+readme = "README.md"
+repository = "https://github.com/mintlu8/bevy_defer"
+description = """
+A global state machine for working with `bevy_picking`.
+"""
+keywords = ["bevy", "picking"]
+
+[dependencies]
+bevy = { version = "0.16.0-rc.3", default-features = false, features = [
+    "bevy_window", "bevy_picking"
+]}
+
+[dev-dependencies]
+bevy = { version = "0.16.0-rc.3" }
