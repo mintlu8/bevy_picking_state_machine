@@ -35,7 +35,7 @@ use bevy::{
         query::With,
         resource::Resource,
         schedule::IntoScheduleConfigs,
-        system::{Query, Res, ResMut},
+        system::{In, IntoSystem, Query, Res, ResMut},
     },
     input::{ButtonInput, mouse::MouseButton},
     math::Vec2,
@@ -66,9 +66,13 @@ impl Default for PickingStateMachinePlugin {
 impl Plugin for PickingStateMachinePlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.insert_resource(self.clone());
+        app.init_resource::<PickingStateMachine>();
         app.add_systems(
             PreUpdate,
-            picking_state_machine_system.in_set(PickSet::Hover),
+            picking_window_system
+                .pipe(picking_button_system)
+                .pipe(picking_state_machine_system)
+                .in_set(PickSet::Hover),
         );
     }
 }
@@ -128,6 +132,8 @@ pub struct PickingStateMachine {
     ///
     /// This will not be present on button release, use `transitions` instead.
     pub press: Option<PressState>,
+    /// If true, current button is just pressed.
+    pub current_btn_just_pressed: bool,
     /// If true, [`PickingStateMachine::pointer`]
     /// is not retrieved from the current frame.
     pub pointer_is_out_of_bounds: bool,
@@ -164,18 +170,34 @@ impl PickingStateMachine {
     pub fn get_transition(&self, entity: Entity) -> Option<PickingTransition> {
         self.transitions.iter().find(|x| x.entity() == entity)
     }
+
+    pub fn get_active_entity(&self) -> Option<Entity> {
+        self.current.current_entity()
+    }
+
+    pub fn is_hovering(&self) -> bool {
+        matches!(self.current, GlobalPickingState::Hover { .. })
+    }
+
+    pub fn is_pressing(&self) -> bool {
+        matches!(self.current, GlobalPickingState::Pressed { .. })
+    }
+
+    /// We allow acquiring new target if
+    /// * Not post-cancellation state.
+    /// * Not pressed.
+    /// * Just pressed with no current entity.
+    fn can_acquire_new_target(&self) -> bool {
+        !self.is_post_cancellation_state
+            && (self.press.is_none()
+                || self.get_active_entity().is_none() && self.current_btn_just_pressed)
+    }
 }
 
-pub fn picking_state_machine_system(
-    time: Res<Time<Virtual>>,
-    settings: Res<PickingStateMachinePlugin>,
-    mut pick: EventReader<PointerHits>,
+fn picking_window_system(
     mut state_machine: ResMut<PickingStateMachine>,
-    filters: Query<&ButtonFilter>,
-    input: Res<ButtonInput<MouseButton>>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) {
-    let time = time.elapsed_secs();
     let mouse_position = match window.single() {
         Ok(window) => window.cursor_position(),
         Err(_) => None,
@@ -189,60 +211,76 @@ pub fn picking_state_machine_system(
             state_machine.pointer_is_out_of_bounds = true;
         }
     }
+}
+
+fn picking_button_system(
+    time: Res<Time<Virtual>>,
+    mut state_machine: ResMut<PickingStateMachine>,
+    settings: Res<PickingStateMachinePlugin>,
+    input: Res<ButtonInput<MouseButton>>,
+) -> bool {
     let mut current_button = None;
     let mut cancel = false;
+    let mut just_pressed = false;
+    let time = time.elapsed_secs();
     for button in &settings.allowed_buttons {
         if input.pressed(*button) {
+            if input.just_pressed(*button) {
+                just_pressed = true;
+            }
             if current_button.is_none() {
                 current_button = Some(*button)
             } else {
+                current_button = None;
                 cancel = true;
                 break;
             }
         }
     }
+    state_machine.current_btn_just_pressed = false;
     if cancel {
         state_machine.is_post_cancellation_state = true;
     } else if state_machine.is_post_cancellation_state && current_button.is_none() {
         state_machine.is_post_cancellation_state = false;
+    } else if just_pressed {
+        state_machine.current_btn_just_pressed = true;
     }
-    let button_changed = match (state_machine.press, current_button) {
-        (Some(press), Some(button)) => {
-            if press.button == button {
-                false
-            } else {
-                state_machine.press = Some(PressState {
-                    button,
-                    position: state_machine.pointer,
-                    time,
-                });
-                true
-            }
-        }
-        (Some(_), None) => true,
-        (None, Some(button)) => {
-            state_machine.press = Some(PressState {
-                button,
-                position: state_machine.pointer,
-                time,
-            });
-            true
-        }
-        (None, None) => false,
-    };
+    // We need to keep this for events so deletion is delayed.
+    if let Some(button) = current_button {
+        state_machine.press = Some(PressState {
+            button,
+            position: state_machine.pointer,
+            time,
+        });
+    }
+    current_button.is_some()
+}
+
+fn picking_state_machine_system(
+    pressed: In<bool>,
+    time: Res<Time<Virtual>>,
+    settings: Res<PickingStateMachinePlugin>,
+    mut pick: EventReader<PointerHits>,
+    mut state_machine: ResMut<PickingStateMachine>,
+    filters: Query<&ButtonFilter>,
+) {
+    let pressed = *pressed;
+    let time = time.elapsed_secs();
     let mut min = (f32::NEG_INFINITY, Reverse(f32::INFINITY));
     let mut target = None;
-    let current = state_machine.current.current_entity();
-    // If pressed, lock in.
-    let can_acquire_new_current =
-        current_button.is_none() || state_machine.is_post_cancellation_state;
+    let current = match state_machine.current {
+        GlobalPickingState::None => None,
+        GlobalPickingState::Hover { .. } => None,
+        GlobalPickingState::Pressed { entity } => Some(entity),
+    };
+    let can_acquire = state_machine.can_acquire_new_target();
     'main: for hits in pick.read() {
         for (entity, hit) in &hits.picks {
             if Some(*entity) == current {
                 target = current;
                 break 'main;
             }
-            if !can_acquire_new_current {
+            if !can_acquire {
                 continue;
             }
             let priority = (hits.order, Reverse(hit.depth));
@@ -255,7 +293,7 @@ pub fn picking_state_machine_system(
     state_machine.previous = state_machine.current;
     match target {
         None => {
-            if current_button.is_some() && !button_changed {
+            if pressed && !state_machine.current_btn_just_pressed {
                 match state_machine.current {
                     GlobalPickingState::Pressed { .. } => (),
                     _ => state_machine.current = GlobalPickingState::None,
@@ -277,12 +315,10 @@ pub fn picking_state_machine_system(
                 }
             }
         }
-        Some(entity) if current_button.is_none() => {
-            state_machine.current = GlobalPickingState::Hover { entity }
-        }
+        Some(entity) if !pressed => state_machine.current = GlobalPickingState::Hover { entity },
         Some(entity) => {
             let filter = if let Ok(filter) = filters.get(entity) {
-                filter.contains(current_button.unwrap())
+                filter.contains(state_machine.press.unwrap().button)
             } else {
                 true
             };
@@ -294,7 +330,7 @@ pub fn picking_state_machine_system(
         }
     }
     state_machine.queue_transitions(time);
-    if current_button.is_none() {
+    if !pressed {
         state_machine.press = None;
     }
 }
