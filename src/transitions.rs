@@ -1,6 +1,6 @@
 use std::{iter::Copied, ops::Deref, slice::Iter};
 
-use bevy::ecs::entity::Entity;
+use bevy::{ecs::entity::Entity, input::mouse::MouseButton};
 
 use crate::{GlobalPickingState, PickingStateMachine};
 
@@ -52,9 +52,11 @@ impl<'t> IntoIterator for &'t PickingTransitions {
 pub enum PickingTransition {
     Pressed {
         entity: Entity,
+        button: MouseButton,
     },
     Released {
         entity: Entity,
+        button: MouseButton,
         time: f32,
         outside: bool,
     },
@@ -66,6 +68,7 @@ pub enum PickingTransition {
     },
     Cancelled {
         entity: Entity,
+        button: MouseButton,
         time: f32,
     },
 }
@@ -73,7 +76,7 @@ pub enum PickingTransition {
 impl PickingTransition {
     pub fn entity(&self) -> Entity {
         match *self {
-            PickingTransition::Pressed { entity } => entity,
+            PickingTransition::Pressed { entity, .. } => entity,
             PickingTransition::Released { entity, .. } => entity,
             PickingTransition::HoverEnter { entity } => entity,
             PickingTransition::HoverExit { entity } => entity,
@@ -88,13 +91,14 @@ impl PickingStateMachine {
         use PickingTransitions::{FromTo, One};
         self.transitions = PickingTransitions::None;
         let time = self.press.map(|x| now - x.time).unwrap_or(0.0);
+        let button = self.press.map(|x| x.button).unwrap_or(MouseButton::Left);
         match (self.previous, self.current) {
             (None, None) => (),
             (None, Hover { entity }) => {
                 self.transitions = One(PickingTransition::HoverEnter { entity })
             }
             (None, Pressed { entity }) => {
-                self.transitions = One(PickingTransition::Pressed { entity })
+                self.transitions = One(PickingTransition::Pressed { entity, button })
             }
             (Hover { entity }, None) => {
                 self.transitions = One(PickingTransition::HoverExit { entity })
@@ -109,20 +113,25 @@ impl PickingStateMachine {
             }
             (Hover { entity: e1 }, Pressed { entity: e2 }) => {
                 if e1 == e2 {
-                    self.transitions = One(PickingTransition::Pressed { entity: e1 });
+                    self.transitions = One(PickingTransition::Pressed { entity: e1, button });
                 } else {
                     self.transitions = FromTo([
                         PickingTransition::HoverExit { entity: e1 },
-                        PickingTransition::Pressed { entity: e2 },
+                        PickingTransition::Pressed { entity: e2, button },
                     ]);
                 }
             }
             (Pressed { entity }, None) => {
                 if self.is_post_cancellation_state {
-                    self.transitions = One(PickingTransition::Cancelled { entity, time });
+                    self.transitions = One(PickingTransition::Cancelled {
+                        entity,
+                        time,
+                        button,
+                    });
                 } else {
                     self.transitions = One(PickingTransition::Released {
                         entity,
+                        button,
                         time,
                         outside: true,
                     });
@@ -132,6 +141,7 @@ impl PickingStateMachine {
                 if e1 == e2 {
                     self.transitions = One(PickingTransition::Released {
                         entity: e1,
+                        button,
                         time,
                         outside: false,
                     });
@@ -139,6 +149,7 @@ impl PickingStateMachine {
                     self.transitions = FromTo([
                         PickingTransition::Released {
                             entity: e1,
+                            button,
                             time,
                             outside: true,
                         },
@@ -147,15 +158,16 @@ impl PickingStateMachine {
                 }
             }
             (Pressed { entity: e1 }, Pressed { entity: e2 }) => {
-                // In no situation should these two be different.
-                if e1 != e2 {
+                // Both of these situations should be forbidden, but just in case.
+                if e1 != e2 || self.current_btn_just_pressed {
                     self.transitions = FromTo([
                         PickingTransition::Released {
                             entity: e1,
+                            button,
                             time,
                             outside: true,
                         },
-                        PickingTransition::Pressed { entity: e2 },
+                        PickingTransition::Pressed { entity: e2, button },
                     ]);
                 }
             }

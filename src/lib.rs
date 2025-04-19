@@ -189,8 +189,7 @@ impl PickingStateMachine {
     /// * Just pressed with no current entity.
     fn can_acquire_new_target(&self) -> bool {
         !self.is_post_cancellation_state
-            && (self.press.is_none()
-                || self.get_active_entity().is_none() && self.current_btn_just_pressed)
+            && (self.press.is_none() || self.current_btn_just_pressed)
     }
 }
 
@@ -235,6 +234,15 @@ fn picking_button_system(
                 cancel = true;
                 break;
             }
+        }
+    }
+    // To make state transitions less weird,
+    // if you release one button and press another in the same frame,
+    // treat it as entering cancellation state,
+    // this ensures one event per frame.
+    if let Some(press) = state_machine.press {
+        if current_button.is_some_and(|b| b != press.button) {
+            cancel = true;
         }
     }
     state_machine.current_btn_just_pressed = false;
