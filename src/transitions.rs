@@ -1,6 +1,6 @@
 use std::{iter::Copied, ops::Deref, slice::Iter};
 
-use bevy::{ecs::entity::Entity, input::mouse::MouseButton};
+use bevy::{ecs::entity::Entity, input::mouse::MouseButton, math::Vec2};
 
 use crate::{GlobalPickingState, PickingStateMachine};
 
@@ -57,6 +57,7 @@ pub enum PickingTransition {
     Released {
         entity: Entity,
         button: MouseButton,
+        down: Vec2,
         time: f32,
         outside: bool,
     },
@@ -69,6 +70,7 @@ pub enum PickingTransition {
     Cancelled {
         entity: Entity,
         button: MouseButton,
+        down: Vec2,
         time: f32,
     },
 }
@@ -86,12 +88,13 @@ impl PickingTransition {
 }
 
 impl PickingStateMachine {
-    pub fn queue_transitions(&mut self, now: f32) {
+    pub(crate) fn queue_transitions(&mut self, now: f32) {
         use GlobalPickingState::*;
         use PickingTransitions::{FromTo, One};
         self.transitions = PickingTransitions::None;
         let time = self.press.map(|x| now - x.time).unwrap_or(0.0);
         let button = self.press.map(|x| x.button).unwrap_or(MouseButton::Left);
+        let down = self.press.map(|x| x.position).unwrap_or(Vec2::ZERO);
         match (self.previous, self.current) {
             (None, None) => (),
             (None, Hover { entity }) => {
@@ -125,6 +128,7 @@ impl PickingStateMachine {
                 if self.is_post_cancellation_state {
                     self.transitions = One(PickingTransition::Cancelled {
                         entity,
+                        down,
                         time,
                         button,
                     });
@@ -132,6 +136,7 @@ impl PickingStateMachine {
                     self.transitions = One(PickingTransition::Released {
                         entity,
                         button,
+                        down,
                         time,
                         outside: true,
                     });
@@ -142,6 +147,7 @@ impl PickingStateMachine {
                     self.transitions = One(PickingTransition::Released {
                         entity: e1,
                         button,
+                        down,
                         time,
                         outside: false,
                     });
@@ -150,6 +156,7 @@ impl PickingStateMachine {
                         PickingTransition::Released {
                             entity: e1,
                             button,
+                            down,
                             time,
                             outside: true,
                         },
@@ -164,6 +171,7 @@ impl PickingStateMachine {
                         PickingTransition::Released {
                             entity: e1,
                             button,
+                            down,
                             time,
                             outside: true,
                         },

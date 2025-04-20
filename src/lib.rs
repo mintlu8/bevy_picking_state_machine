@@ -24,8 +24,10 @@
 use core::f32;
 use std::cmp::Reverse;
 mod local;
+pub mod propagation;
 mod transitions;
 pub use local::ButtonFilter;
+pub use transitions::{PickingTransition, PickingTransitions};
 
 use bevy::{
     app::{Plugin, PreUpdate},
@@ -43,7 +45,6 @@ use bevy::{
     time::{Time, Virtual},
     window::{PrimaryWindow, Window},
 };
-pub use transitions::{PickingTransition, PickingTransitions};
 
 /// Plugin for [`PickingStateMachine`].
 #[derive(Debug, Clone, Resource)]
@@ -167,6 +168,14 @@ impl PickingStateMachine {
         }
     }
 
+    pub fn active_state(&self) -> EntityPickingState {
+        match self.current {
+            GlobalPickingState::None => EntityPickingState::None,
+            GlobalPickingState::Hover { .. } => EntityPickingState::Hover,
+            GlobalPickingState::Pressed { .. } => EntityPickingState::Pressed,
+        }
+    }
+
     pub fn get_transition(&self, entity: Entity) -> Option<PickingTransition> {
         self.transitions.iter().find(|x| x.entity() == entity)
     }
@@ -185,11 +194,9 @@ impl PickingStateMachine {
 
     /// We allow acquiring new target if
     /// * Not post-cancellation state.
-    /// * Not pressed.
-    /// * Just pressed with no current entity.
+    /// * Not pressed or just pressed.
     fn can_acquire_new_target(&self) -> bool {
-        !self.is_post_cancellation_state
-            && (self.press.is_none() || self.current_btn_just_pressed)
+        !self.is_post_cancellation_state && (self.press.is_none() || self.current_btn_just_pressed)
     }
 }
 
