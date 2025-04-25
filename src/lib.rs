@@ -1,26 +1,4 @@
-//! An opinionated global state machine for `bevy_picking`.
-//!
-//! # Rules
-//!
-//! * One action at a time
-//!
-//!     Only one entity can be "active", i.e. hovered or pressed.
-//!
-//!     There is no multi-cursor support.
-//!
-//! * Single button only
-//!
-//!     The state only tracks one button.
-//!     Pressing multiple buttons is treated as canceling the current click or drag.
-//!     This state persists until all buttons are released.
-//!
-//!     If cancellation happens after hovering, you can customize the behavior to
-//!     either stop hovering immediately or maintain the hovering state.
-//!
-//! * Clean interactions
-//!
-//!     If any registered button is already pressed, no new entities can be registered as hovered or pressed.
-
+#![doc = stringify!("../README.md")]
 use core::f32;
 use std::cmp::Reverse;
 mod local;
@@ -50,6 +28,8 @@ use bevy::{
 #[derive(Debug, Clone, Resource)]
 pub struct PickingStateMachinePlugin {
     /// Only buttons in this list will be considered.
+    ///
+    /// By default we only consider the left mouse button.
     pub allowed_buttons: Vec<MouseButton>,
     /// If true, pressing multiple buttons will immediately cancel `Hover` to `None`.
     pub cancel_hover: bool,
@@ -148,6 +128,12 @@ pub struct PickingStateMachine {
 }
 
 impl PickingStateMachine {
+    /// Returns the current state on an entity.
+    ///
+    /// # Note
+    ///
+    /// * At most one entity have state other than [`EntityPickingState::None`] at a given frame.
+    /// * Does not require the entity to exist.
     pub fn get_state(&self, entity: Entity) -> EntityPickingState {
         match self.current {
             GlobalPickingState::None => EntityPickingState::None,
@@ -168,6 +154,7 @@ impl PickingStateMachine {
         }
     }
 
+    /// Returns the current state on the active entity.
     pub fn active_state(&self) -> EntityPickingState {
         match self.current {
             GlobalPickingState::None => EntityPickingState::None,
@@ -176,20 +163,29 @@ impl PickingStateMachine {
         }
     }
 
+    /// Returns the current state transition event on an entity.
     pub fn get_transition(&self, entity: Entity) -> Option<PickingTransition> {
         self.transitions.iter().find(|x| x.entity() == entity)
     }
 
+    /// Returns the active entity that is being hovered or pressed.
     pub fn get_active_entity(&self) -> Option<Entity> {
         self.current.current_entity()
     }
 
+    /// Returns true if something is hovered and no recognized button is being pressed.
     pub fn is_hovering(&self) -> bool {
         matches!(self.current, GlobalPickingState::Hover { .. })
     }
 
+    /// Returns true if a recognized button is pressed and not in cancellation state.
     pub fn is_pressing(&self) -> bool {
         matches!(self.current, GlobalPickingState::Pressed { .. })
+    }
+
+    /// Returns true if in cancellation state.
+    pub fn is_cancelled(&self) -> bool {
+        self.is_post_cancellation_state
     }
 
     /// We allow acquiring new target if

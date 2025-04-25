@@ -103,7 +103,7 @@ impl PropagatedPickingStateMachine<'_, '_> {
         }
     }
 
-    /// Get the transition of an entity, accounting for event propagations.
+    /// Get the state transition event of an entity, accounting for event propagations.
     pub fn get_transition(&self, entity: Entity) -> Option<PickingTransition> {
         self.state_machine
             .transitions
