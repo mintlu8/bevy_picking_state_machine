@@ -1,7 +1,7 @@
 # bevy_picking_state_machine
 
 An opinionated global state machine for `bevy_picking`. This serves as a drop in replacement
-of `PickingInteraction` and `ButtonInput<MouseButton>` that can also handle events like observers. Unlike `PickingInteraction` this crate handles global state like dragging correctly.
+of `PickingInteraction`, `ButtonInput<MouseButton>` and `Window::pointer` that can also handle events like observers. Unlike `PickingInteraction` this crate handles global state like dragging correctly.
 
 ## Rules
 
@@ -20,6 +20,12 @@ of `PickingInteraction` and `ButtonInput<MouseButton>` that can also handle even
 * Clean interactions
 
     If any recognized button is already pressed, no new entities can be registered as hovered or pressed.
+
+## Getting Started
+
+Add `PickingStateMachinePlugin`, do your normal `bevy_picking` setup, then use `Res<PickingStateMachine>` in your system over `PickingInteraction`, that's it!
+
+## Versions
 
 | bevy | bevy_picking_state_machine |
 |------|----------------------------|

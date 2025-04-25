@@ -1,4 +1,4 @@
-#![doc = stringify!("../README.md")]
+#![doc = include_str!("../README.md")]
 use core::f32;
 use std::cmp::Reverse;
 mod local;
