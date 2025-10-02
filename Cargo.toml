@@ -1,6 +1,6 @@
 [package]
 name = "bevy_picking_state_machine"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 
 authors = ["Mincong Lu <mintlux667@gmail.com>"]
@@ -14,9 +14,9 @@ A global state machine for working with `bevy_picking`.
 keywords = ["bevy", "picking"]
 
 [dependencies]
-bevy = { version = "0.16.0", default-features = false, features = [
+bevy = { version = "0.17.0", default-features = false, features = [
     "bevy_window", "bevy_picking"
 ]}
 
 [dev-dependencies]
-bevy = { version = "0.16.0" }
+bevy = { version = "0.17.0" }

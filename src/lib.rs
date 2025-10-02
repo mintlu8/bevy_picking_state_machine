@@ -11,7 +11,7 @@ use bevy::{
     app::{Plugin, PreUpdate},
     ecs::{
         entity::Entity,
-        event::EventReader,
+        message::MessageReader,
         query::With,
         resource::Resource,
         schedule::IntoScheduleConfigs,
@@ -19,7 +19,7 @@ use bevy::{
     },
     input::{ButtonInput, mouse::MouseButton},
     math::Vec2,
-    picking::{PickSet, backend::PointerHits},
+    picking::{PickingSystems, backend::PointerHits},
     time::{Time, Virtual},
     window::{PrimaryWindow, Window},
 };
@@ -53,7 +53,7 @@ impl Plugin for PickingStateMachinePlugin {
             picking_window_system
                 .pipe(picking_button_system)
                 .pipe(picking_state_machine_system)
-                .in_set(PickSet::Hover),
+                .in_set(PickingSystems::Hover),
         );
     }
 }
@@ -173,6 +173,31 @@ impl PickingStateMachine {
         self.current.current_entity()
     }
 
+    /// Returns the active entity that is being hovered or pressed,
+    /// if the active entity has changed.
+    pub fn get_active_entity_if_changed(&self) -> Option<Entity> {
+        if self.active_entity_changed() {
+            self.get_active_entity()
+        } else {
+            None
+        }
+    }
+
+    /// Returns the previous active entity that was hovered or pressed,
+    /// if the active entity has changed.
+    pub fn get_previous_entity_if_changed(&self) -> Option<Entity> {
+        if self.active_entity_changed() {
+            self.previous.current_entity()
+        } else {
+            None
+        }
+    }
+
+    /// Returns true if the active entity has changed.
+    pub fn active_entity_changed(&self) -> bool {
+        self.previous.current_entity() != self.current.current_entity()
+    }
+
     /// Returns true if something is hovered and no recognized button is being pressed.
     pub fn is_hovering(&self) -> bool {
         matches!(self.current, GlobalPickingState::Hover { .. })
@@ -271,7 +296,7 @@ fn picking_state_machine_system(
     pressed: In<bool>,
     time: Res<Time<Virtual>>,
     settings: Res<PickingStateMachinePlugin>,
-    mut pick: EventReader<PointerHits>,
+    mut pick: MessageReader<PointerHits>,
     mut state_machine: ResMut<PickingStateMachine>,
     filters: Query<&ButtonFilter>,
 ) {

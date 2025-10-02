@@ -1,7 +1,7 @@
 # bevy_picking_state_machine
 
 An opinionated global state machine for `bevy_picking`. This serves as a drop in replacement
-of `PickingInteraction`, `ButtonInput<MouseButton>` and `Window::pointer` that can also handle events like observers. Unlike `PickingInteraction` this crate handles global state like dragging correctly.
+of `PickingInteraction`, `ButtonInput<MouseButton>` and `Window::pointer` that can also handle events. Unlike `PickingInteraction` this crate handles global state like dragging correctly.
 
 ## Rules
 
