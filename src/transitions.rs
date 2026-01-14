@@ -32,7 +32,7 @@ impl Deref for PickingTransitions {
 }
 
 impl PickingTransitions {
-    pub fn iter(&self) -> Copied<Iter<PickingTransition>> {
+    pub fn iter(&self) -> Copied<Iter<'_, PickingTransition>> {
         self.into_iter()
     }
 }

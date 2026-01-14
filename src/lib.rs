@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+#![allow(clippy::collapsible_if)]
 use core::f32;
 use std::cmp::Reverse;
 mod local;
@@ -100,6 +101,7 @@ pub struct PressState {
 
 /// Global state machine for `bevy_picking`.
 #[derive(Debug, Clone, Default, Resource)]
+#[non_exhaustive]
 pub struct PickingStateMachine {
     /// State of the previous frame.
     pub previous: GlobalPickingState,
