@@ -12,3 +12,12 @@ impl ButtonFilter {
         self.0.contains(&btn)
     }
 }
+
+/// Optional component that increase or decrease the priority of the item.
+#[derive(Debug, Clone, Copy, Default, Component)]
+pub struct PickPriority {
+    /// Modifies the backend order, bigger value gets prioritized.
+    pub order: f32,
+    /// Modifies (subtracts from) the distance from camera, bigger value gets prioritized.
+    pub distance: f32,
+}

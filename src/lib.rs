@@ -5,8 +5,8 @@ use std::cmp::Reverse;
 mod local;
 pub mod propagation;
 mod transitions;
-pub use local::ButtonFilter;
-pub use transitions::{PickingTransition, PickingTransitions};
+pub use local::{ButtonFilter, PickPriority};
+pub use transitions::PickingTransition;
 
 use bevy::{
     app::{Plugin, PreUpdate},
@@ -99,6 +99,16 @@ pub struct PressState {
     pub time: f32,
 }
 
+/// Determines who owns the cursor.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum CursorOwner {
+    /// Represents curser is being controlled by the mouse.
+    #[default]
+    Mouse,
+    /// Represents curser is being controlled by something other than the mouse.
+    Keyboard,
+}
+
 /// Global state machine for `bevy_picking`.
 #[derive(Debug, Clone, Default, Resource)]
 #[non_exhaustive]
@@ -126,7 +136,16 @@ pub struct PickingStateMachine {
     /// An internal event channel for picking events.
     ///
     /// Use `as_ref` or `iter` to access items.
-    pub transitions: PickingTransitions,
+    pub transitions: Vec<PickingTransition>,
+    /// Determines who owns the cursor.
+    ///
+    /// The user can manually set this value to [`CursorOwner::Keyboard`].
+    /// If [`CursorOwner::Keyboard`] is active, a portion of
+    /// the state machine is user controlled, until the mouse moves and triggers
+    /// either hover or click, in which case reverts back to [`CursorOwner::Mouse`].
+    pub owner: CursorOwner,
+    /// Cached elapsed seconds.
+    pub now: f32,
 }
 
 impl PickingStateMachine {
@@ -166,8 +185,11 @@ impl PickingStateMachine {
     }
 
     /// Returns the current state transition event on an entity.
-    pub fn get_transition(&self, entity: Entity) -> Option<PickingTransition> {
-        self.transitions.iter().find(|x| x.entity() == entity)
+    pub fn get_transitions(&self, entity: Entity) -> impl Iterator<Item = PickingTransition> {
+        self.transitions
+            .iter()
+            .copied()
+            .filter(move |x| x.entity() == entity)
     }
 
     /// Returns the active entity that is being hovered or pressed.
@@ -221,6 +243,40 @@ impl PickingStateMachine {
     fn can_acquire_new_target(&self) -> bool {
         !self.is_post_cancellation_state && (self.press.is_none() || self.current_btn_just_pressed)
     }
+
+    /// Hover over an entity with a non-mouse action.
+    pub fn keyboard_hover(&mut self, entity: Entity) {
+        self.owner = CursorOwner::Keyboard;
+        self.current = GlobalPickingState::Hover { entity };
+    }
+
+    /// Exit hover over an entity with a non-mouse action.
+    pub fn keyboard_hover_exit(&mut self) {
+        self.owner = CursorOwner::Keyboard;
+        self.current = GlobalPickingState::None;
+    }
+
+    /// Press the active entity with a non-mouse action.
+    pub fn keyboard_press(&mut self) {
+        self.owner = CursorOwner::Keyboard;
+        if let GlobalPickingState::Hover { entity } = self.current {
+            self.current = GlobalPickingState::Pressed { entity };
+            self.press = Some(PressState {
+                button: MouseButton::Other(u16::MAX),
+                position: Vec2::ZERO,
+                time: self.now,
+            })
+        }
+    }
+
+    /// Release the active entity with a non-mouse action.
+    pub fn keyboard_release(&mut self) {
+        self.owner = CursorOwner::Keyboard;
+        if let GlobalPickingState::Pressed { entity } = self.current {
+            self.current = GlobalPickingState::Hover { entity };
+            self.press = None
+        }
+    }
 }
 
 fn picking_window_system(
@@ -252,6 +308,7 @@ fn picking_button_system(
     let mut cancel = false;
     let mut just_pressed = false;
     let time = time.elapsed_secs();
+    state_machine.now = time;
     for button in &settings.allowed_buttons {
         if input.pressed(*button) {
             if input.just_pressed(*button) {
@@ -301,6 +358,7 @@ fn picking_state_machine_system(
     mut pick: MessageReader<PointerHits>,
     mut state_machine: ResMut<PickingStateMachine>,
     filters: Query<&ButtonFilter>,
+    priorities: Query<&PickPriority>,
 ) {
     let pressed = *pressed;
     let time = time.elapsed_secs();
@@ -321,7 +379,14 @@ fn picking_state_machine_system(
             if !can_acquire {
                 continue;
             }
-            let priority = (hits.order, Reverse(hit.depth));
+            let priority = if let Ok(priority) = priorities.get(*entity) {
+                (
+                    hits.order + priority.order,
+                    Reverse(hit.depth - priority.distance),
+                )
+            } else {
+                (hits.order, Reverse(hit.depth))
+            };
             if priority > min {
                 min = priority;
                 target = Some(*entity);
