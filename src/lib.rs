@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 #![allow(clippy::collapsible_if)]
+#![allow(clippy::too_many_arguments)]
 use core::f32;
 use std::cmp::Reverse;
 mod local;
@@ -18,7 +19,10 @@ use bevy::{
         schedule::IntoScheduleConfigs,
         system::{In, IntoSystem, Query, Res, ResMut},
     },
-    input::{ButtonInput, mouse::MouseButton},
+    input::{
+        ButtonInput,
+        mouse::{MouseButton, MouseMotion},
+    },
     math::Vec2,
     picking::{PickingSystems, backend::PointerHits},
     time::{Time, Virtual},
@@ -100,7 +104,7 @@ pub struct PressState {
 }
 
 /// Determines who owns the cursor.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum CursorOwner {
     /// Represents curser is being controlled by the mouse.
     #[default]
@@ -184,7 +188,12 @@ impl PickingStateMachine {
         }
     }
 
-    /// Returns the current state transition event on an entity.
+    /// Returns the current state transition events on an entity.
+    pub fn iter_transitions(&self) -> impl Iterator<Item = PickingTransition> {
+        self.transitions.iter().copied()
+    }
+
+    /// Returns the current state transition events on an entity.
     pub fn get_transitions(&self, entity: Entity) -> impl Iterator<Item = PickingTransition> {
         self.transitions
             .iter()
@@ -303,6 +312,7 @@ fn picking_button_system(
     mut state_machine: ResMut<PickingStateMachine>,
     settings: Res<PickingStateMachinePlugin>,
     input: Res<ButtonInput<MouseButton>>,
+    mut mouse_movements: MessageReader<MouseMotion>,
 ) -> bool {
     let mut current_button = None;
     let mut cancel = false;
@@ -322,6 +332,9 @@ fn picking_button_system(
                 break;
             }
         }
+    }
+    if just_pressed || mouse_movements.read().count() > 0 {
+        state_machine.owner = CursorOwner::Mouse;
     }
     // To make state transitions less weird,
     // if you release one button and press another in the same frame,
@@ -360,6 +373,10 @@ fn picking_state_machine_system(
     filters: Query<&ButtonFilter>,
     priorities: Query<&PickPriority>,
 ) {
+    // This is fine since this will be reset if the cursor moved or a button is pressed.
+    if state_machine.owner == CursorOwner::Keyboard {
+        return;
+    }
     let pressed = *pressed;
     let time = time.elapsed_secs();
     let mut min = (f32::NEG_INFINITY, Reverse(f32::INFINITY));

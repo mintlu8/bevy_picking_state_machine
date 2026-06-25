@@ -7,19 +7,18 @@ of `PickingInteraction`, `ButtonInput<MouseButton>` and `Window::pointer` that c
 
 * One action at a time
 
-    Only one entity can be "active", i.e. hovered or pressed.
-    Each entity can only receive one event (like `HoverEnter`) in a frame.
-    There will be no multi-cursor support due to this assumption.
+  Only one entity can be "active", i.e. hovered or pressed.
+  There will be no multi-cursor support due to this assumption.
 
 * Single button only
 
-    The state only tracks one button.
-    Pressing multiple buttons is treated as canceling the current click or drag.
-    This state persists until all buttons are released.
+  The state only tracks one button.
+  Pressing multiple buttons is treated as canceling the current click or drag.
+  This state persists until all buttons are released.
 
 * Clean interactions
 
-    If any recognized button is already pressed, no new entities can be registered as hovered or pressed.
+  If any recognized button is already pressed, no new entities can be registered as hovered or pressed.
 
 ## Getting Started
 
